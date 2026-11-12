@@ -64,10 +64,11 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuoteModal }) => {
               href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 text-[#4ADE80] hover:text-[#86EFAC] font-mono transition-colors font-semibold"
+              className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#15803D]/25 hover:bg-[#15803D]/40 text-[#4ADE80] hover:text-white border border-[#4ADE80]/30 transition-all font-semibold text-xs"
+              title={language === 'ar' ? 'محادثة واتساب مباشرة' : 'Direct WhatsApp Chat'}
             >
               <MessageCircle className="w-3.5 h-3.5" />
-              <span dir="ltr">{COMPANY_CONFIG.contact.whatsapp.display}</span>
+              <span>{language === 'ar' ? 'واتساب' : 'WhatsApp'}</span>
             </a>
           </div>
         </div>
@@ -183,10 +184,10 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuoteModal }) => {
                 href={whatsappUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 py-2.5 px-4 text-xs font-bold bg-[#15803D] text-white rounded-xl font-mono shadow-sm"
+                className="flex items-center justify-center gap-2 py-2.5 px-4 text-xs font-bold bg-[#15803D] text-white rounded-xl shadow-sm"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>واتساب: {COMPANY_CONFIG.contact.whatsapp.display}</span>
+                <span>{language === 'ar' ? 'محادثة واتساب مباشرة' : 'Direct WhatsApp Chat'}</span>
               </a>
 
               <a

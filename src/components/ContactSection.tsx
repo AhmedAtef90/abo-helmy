@@ -9,29 +9,21 @@ import {
   MessageCircle, 
   Send, 
   CheckCircle2, 
-  ExternalLink,
-  FileSpreadsheet,
-  Check,
-  Settings2,
-  TableProperties
+  ExternalLink
 } from 'lucide-react';
 import { 
   appendQuoteToSpreadsheet, 
   saveLocalQuote, 
   getSavedSheetConfig, 
-  getCachedToken,
-  SheetConfig,
-  auth
+  getCachedToken
 } from '../services/sheetsService';
-import { GoogleSheetsConnectModal } from './GoogleSheetsConnectModal';
-import { onAuthStateChanged, User } from 'firebase/auth';
 
 interface ContactSectionProps {
   initialStoneInterest?: string;
 }
 
 export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInterest = '' }) => {
-  const { language, t } = useLanguage();
+  const { language } = useLanguage();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -48,24 +40,12 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [syncedToSheet, setSyncedToSheet] = useState(false);
-  const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
-  const [sheetConfig, setSheetConfig] = useState<SheetConfig | null>(getSavedSheetConfig());
-  const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
 
   useEffect(() => {
     if (initialStoneInterest) {
       setFormData((prev) => ({ ...prev, stoneInterest: initialStoneInterest }));
     }
   }, [initialStoneInterest]);
-
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setCurrentUser(user);
-    });
-    setSheetConfig(getSavedSheetConfig());
-    return () => unsub();
-  }, []);
 
   const validate = () => {
     const errs: Record<string, string> = {};
@@ -89,22 +69,20 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
     if (!validate()) return;
 
     setSubmitting(true);
-    let sheetSuccess = false;
 
-    // 1. Try appending to active Google Sheet if token & config exist
+    // 1. Silent Google Sheet submission in background if authenticated
     const token = getCachedToken();
     const config = getSavedSheetConfig();
 
     if (token && config) {
       try {
         await appendQuoteToSpreadsheet(token, config.spreadsheetId, formData);
-        sheetSuccess = true;
       } catch (err) {
-        console.warn('Google Sheet append error:', err);
+        console.warn('Background Google Sheet sync:', err);
       }
     }
 
-    // 2. Headless Apps Script webhook fallback (if specified)
+    // 2. Headless Apps Script webhook fallback (silently)
     if (COMPANY_CONFIG.forms.googleAppsScriptWebhookUrl) {
       try {
         await fetch(COMPANY_CONFIG.forms.googleAppsScriptWebhookUrl, {
@@ -116,16 +94,14 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
             ...formData,
           }),
         });
-        sheetSuccess = true;
       } catch (err) {
-        console.warn('Webhook dispatch error:', err);
+        console.warn('Silent webhook dispatch:', err);
       }
     }
 
-    // 3. Local fail-safe backup
+    // 3. Persistent local database log
     saveLocalQuote(formData);
 
-    setSyncedToSheet(sheetSuccess);
     setSubmitting(false);
     setIsSubmitted(true);
   };
@@ -156,60 +132,20 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
   return (
     <section id="contact" className="py-16 lg:py-24 bg-[#FAF8F5] hairline-b relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Streamlined Section Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#C5A059] mb-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#C5A059]" />
-              <span>{language === 'ar' ? 'طلب تسعير ومواصفات' : 'Procurement & Quotation'}</span>
-            </div>
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#181917] tracking-tight">
-              {language === 'ar' ? 'طلب عرض سعر فوري ومباشر' : 'Direct Request for Quotation'}
-            </h2>
-            <p className="mt-2 text-xs sm:text-sm text-[#6B685E] leading-relaxed">
-              {language === 'ar'
-                ? 'فريقنا الهندسي جاهز لتقديم عروض الأسعار والمواصفات الفنية المعتمدة للمشاريع والكميات.'
-                : 'Our architectural team provides certified pricing and specifications tailored to your project.'}
-            </p>
+        {/* Streamlined Section Header - Client-Facing Only */}
+        <div className="max-w-3xl mb-10">
+          <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#C5A059] mb-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#C5A059]" />
+            <span>{language === 'ar' ? 'طلب تسعير ومواصفات' : 'Procurement & Quotation'}</span>
           </div>
-
-          {/* Google Sheets Status & Admin Sync Button */}
-          <div className="shrink-0 flex items-center gap-2">
-            {sheetConfig ? (
-              <div className="p-2.5 px-3 rounded-xl bg-white border border-[#0F9D58]/30 shadow-xs flex items-center gap-3">
-                <div className="flex items-center gap-1.5">
-                  <FileSpreadsheet className="w-4 h-4 text-[#0F9D58]" />
-                  <span className="text-xs font-bold text-[#0F9D58]">
-                    {language === 'ar' ? 'Google Sheets مربوط' : 'Sheets Connected'}
-                  </span>
-                </div>
-                <a
-                  href={sheetConfig.sheetUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-[#181917] hover:text-[#0F9D58] underline flex items-center gap-1 font-medium"
-                >
-                  <span>عرض الشيت</span>
-                  <ExternalLink className="w-3 h-3" />
-                </a>
-                <button
-                  onClick={() => setIsSheetsModalOpen(true)}
-                  className="p-1 text-[#6B685E] hover:text-[#181917]"
-                  title="إعدادات الشيت"
-                >
-                  <Settings2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setIsSheetsModalOpen(true)}
-                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-[#F4EFE6] border border-black/[0.1] text-xs font-semibold text-[#181917] shadow-xs transition-colors"
-              >
-                <TableProperties className="w-4 h-4 text-[#0F9D58]" />
-                <span>{language === 'ar' ? 'ربط طلبات الأسعار بجوجل شيت' : 'Connect Google Sheet'}</span>
-              </button>
-            )}
-          </div>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#181917] tracking-tight">
+            {language === 'ar' ? 'طلب عرض سعر فوري ومباشر' : 'Direct Request for Quotation'}
+          </h2>
+          <p className="mt-2 text-xs sm:text-sm text-[#6B685E] leading-relaxed">
+            {language === 'ar'
+              ? 'فريقنا الهندسي جاهز لتقديم عروض الأسعار والمواصفات الفنية المعتمدة للمشاريع والكميات.'
+              : 'Our architectural team provides certified pricing and specifications tailored to your project.'}
+          </p>
         </div>
 
         {/* Streamlined Location Bar */}
@@ -251,21 +187,11 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
                   <h3 className="text-lg sm:text-xl font-bold text-[#181917]">
                     {language === 'ar' ? 'تم استلام طلبكم بنجاح' : 'Quotation Request Received'}
                   </h3>
-                  <p className="text-xs sm:text-sm text-[#6B685E] max-w-md mx-auto mt-1">
+                  <p className="text-xs sm:text-sm text-[#6B685E] max-w-md mx-auto mt-2 leading-relaxed">
                     {language === 'ar'
-                      ? 'سيقوم مهندس المبيعات بالتواصل معكم بالعرض والمواصفات الفنية.'
-                      : 'Our project engineer will contact you shortly with the technical quote.'}
+                      ? 'سيقوم مهندس المبيعات بالتواصل معكم بالعرض المعتمد والمواصفات الفنية في أقرب وقت.'
+                      : 'Our project engineer will contact you shortly with the certified quotation and technical specifications.'}
                   </p>
-                </div>
-
-                {/* Cloud sync indicator */}
-                <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#0F9D58] bg-[#F0FDF4] px-3.5 py-1.5 rounded-lg border border-[#0F9D58]/25">
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  <span>
-                    {syncedToSheet || sheetConfig
-                      ? language === 'ar' ? 'تم التوثيق والمزامنة في Google Sheets مباشرة' : 'Recorded in Google Sheets'
-                      : language === 'ar' ? 'تم تسجيل الطلب في قاعدة البيانات' : 'Saved to Procurement Log'}
-                  </span>
                 </div>
 
                 <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
@@ -499,13 +425,6 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
           </div>
         </div>
       </div>
-
-      {/* Google Sheets Connect Modal */}
-      <GoogleSheetsConnectModal
-        isOpen={isSheetsModalOpen}
-        onClose={() => setIsSheetsModalOpen(false)}
-        onConfigChanged={(cfg) => setSheetConfig(cfg)}
-      />
     </section>
   );
 };
