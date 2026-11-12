@@ -1,0 +1,83 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-bg: #FAF9F6;
+    --color-surface: #FFFFFF;
+    --color-subtle: #F5EFE6;
+    --color-charcoal: #1A1B19;
+    --color-muted: #6B685E;
+    --color-gold: #C5A059;
+    --color-gold-light: #E7D5AA;
+    --color-gold-dark: #8C6D2E;
+    --color-bronze: #A0824B;
+    --color-border: rgba(0, 0, 0, 0.08);
+  }
+
+  html {
+    background-color: #FAF9F6;
+    color: #1A1B19;
+    scroll-behavior: smooth;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html[dir="rtl"] {
+    font-family: 'IBM Plex Sans Arabic', system-ui, -apple-system, sans-serif;
+  }
+
+  html[dir="ltr"] {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+}
+
+/* Subtle architectural hairline dividers */
+.hairline-b {
+  border-bottom: 1px solid rgba(27, 28, 26, 0.08);
+}
+
+.hairline-t {
+  border-top: 1px solid rgba(27, 28, 26, 0.08);
+}
+
+/* Gold metallic accents */
+.gold-text-gradient {
+  background: linear-gradient(135deg, #B38838 0%, #E6C678 50%, #9E7428 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-border-subtle {
+  border-color: rgba(197, 160, 89, 0.3);
+}
+
+/* Minimalist luxury stone cards */
+.stone-card {
+  background-color: #FFFFFF;
+  border: 1px solid rgba(27, 28, 26, 0.08);
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.stone-card:hover {
+  border-color: rgba(197, 160, 89, 0.45);
+  box-shadow: 0 12px 30px -8px rgba(140, 109, 46, 0.08);
+}
+
+/* Clean minimal scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F3EFEA;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CFC7BA;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #8C754E;
+}
