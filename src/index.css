@@ -2,28 +2,30 @@
 
 @layer base {
   :root {
-    --color-bg: #FAF9F6;
+    --color-bg: #FAF8F5;
     --color-surface: #FFFFFF;
-    --color-subtle: #F5EFE6;
-    --color-charcoal: #1A1B19;
+    --color-subtle: #F4EFE6;
+    --color-obsidian: #0D0E0C;
+    --color-charcoal: #181917;
     --color-muted: #6B685E;
     --color-gold: #C5A059;
-    --color-gold-light: #E7D5AA;
+    --color-gold-light: #F0DFC0;
     --color-gold-dark: #8C6D2E;
-    --color-bronze: #A0824B;
-    --color-border: rgba(0, 0, 0, 0.08);
+    --color-gold-rich: #D4AF37;
+    --color-border: rgba(27, 28, 26, 0.08);
   }
 
   html {
-    background-color: #FAF9F6;
-    color: #1A1B19;
+    background-color: #FAF8F5;
+    color: #181917;
     scroll-behavior: smooth;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
   }
 
   html[dir="rtl"] {
-    font-family: 'IBM Plex Sans Arabic', system-ui, -apple-system, sans-serif;
+    font-family: 'Cairo', 'IBM Plex Sans Arabic', system-ui, -apple-system, sans-serif;
+    letter-spacing: normal;
   }
 
   html[dir="ltr"] {
@@ -40,15 +42,23 @@
   border-top: 1px solid rgba(27, 28, 26, 0.08);
 }
 
-/* Gold metallic accents */
+/* Gold metallic accents matching the golden emblem */
 .gold-text-gradient {
-  background: linear-gradient(135deg, #B38838 0%, #E6C678 50%, #9E7428 100%);
+  background: linear-gradient(135deg, #C5A059 0%, #F5E6BE 45%, #9E7428 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
+.gold-gradient-bg {
+  background: linear-gradient(135deg, #C5A059 0%, #D8B469 50%, #9E7428 100%);
+}
+
 .gold-border-subtle {
-  border-color: rgba(197, 160, 89, 0.3);
+  border-color: rgba(197, 160, 89, 0.35);
+}
+
+.gold-glow {
+  box-shadow: 0 0 25px -5px rgba(197, 160, 89, 0.25);
 }
 
 /* Minimalist luxury stone cards */
@@ -59,8 +69,15 @@
 }
 
 .stone-card:hover {
-  border-color: rgba(197, 160, 89, 0.45);
-  box-shadow: 0 12px 30px -8px rgba(140, 109, 46, 0.08);
+  border-color: rgba(197, 160, 89, 0.5);
+  box-shadow: 0 14px 34px -10px rgba(140, 109, 46, 0.12);
+}
+
+/* Premium dark card echoing the logo emblem */
+.stone-card-dark {
+  background: linear-gradient(145deg, #181917 0%, #121311 100%);
+  border: 1px solid rgba(197, 160, 89, 0.25);
+  color: #FFFFFF;
 }
 
 /* Clean minimal scrollbar */
@@ -70,14 +87,14 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #F3EFEA;
+  background: #F4EFE6;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #CFC7BA;
+  background: #C5A059;
   border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #8C754E;
+  background: #8C6D2E;
 }

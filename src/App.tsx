@@ -58,8 +58,11 @@ function MainContent() {
 
       {/* Main Content Sections */}
       <main className="flex-1">
-        {/* 1. Hero Section */}
-        <Hero />
+        {/* 1. Hero Section with Compact Stone Slideshow */}
+        <Hero
+          onSelectProduct={(prod) => setSelectedProduct(prod)}
+          onOpenQuote={(stoneName) => handleOpenInquiryForm(stoneName)}
+        />
 
         {/* 2. Prominent Landscape & Architectural Solutions Section */}
         <LandscapeSection

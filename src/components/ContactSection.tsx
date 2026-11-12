@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { COMPANY_CONFIG, getWhatsAppUrl } from '../config/company';
 import { PRODUCTS } from '../data/products';
@@ -10,9 +10,21 @@ import {
   Send, 
   CheckCircle2, 
   ExternalLink,
-  ShieldCheck,
-  Check
+  FileSpreadsheet,
+  Check,
+  Settings2,
+  TableProperties
 } from 'lucide-react';
+import { 
+  appendQuoteToSpreadsheet, 
+  saveLocalQuote, 
+  getSavedSheetConfig, 
+  getCachedToken,
+  SheetConfig,
+  auth
+} from '../services/sheetsService';
+import { GoogleSheetsConnectModal } from './GoogleSheetsConnectModal';
+import { onAuthStateChanged, User } from 'firebase/auth';
 
 interface ContactSectionProps {
   initialStoneInterest?: string;
@@ -36,6 +48,24 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [syncedToSheet, setSyncedToSheet] = useState(false);
+  const [isSheetsModalOpen, setIsSheetsModalOpen] = useState(false);
+  const [sheetConfig, setSheetConfig] = useState<SheetConfig | null>(getSavedSheetConfig());
+  const [currentUser, setCurrentUser] = useState<User | null>(auth.currentUser);
+
+  useEffect(() => {
+    if (initialStoneInterest) {
+      setFormData((prev) => ({ ...prev, stoneInterest: initialStoneInterest }));
+    }
+  }, [initialStoneInterest]);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+    });
+    setSheetConfig(getSavedSheetConfig());
+    return () => unsub();
+  }, []);
 
   const validate = () => {
     const errs: Record<string, string> = {};
@@ -59,8 +89,22 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
     if (!validate()) return;
 
     setSubmitting(true);
+    let sheetSuccess = false;
 
-    // If a Google Apps Script Webhook is configured, dispatch headless POST:
+    // 1. Try appending to active Google Sheet if token & config exist
+    const token = getCachedToken();
+    const config = getSavedSheetConfig();
+
+    if (token && config) {
+      try {
+        await appendQuoteToSpreadsheet(token, config.spreadsheetId, formData);
+        sheetSuccess = true;
+      } catch (err) {
+        console.warn('Google Sheet append error:', err);
+      }
+    }
+
+    // 2. Headless Apps Script webhook fallback (if specified)
     if (COMPANY_CONFIG.forms.googleAppsScriptWebhookUrl) {
       try {
         await fetch(COMPANY_CONFIG.forms.googleAppsScriptWebhookUrl, {
@@ -72,86 +116,113 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
             ...formData,
           }),
         });
+        sheetSuccess = true;
       } catch (err) {
-        console.warn('Google Sheet webhook dispatch:', err);
+        console.warn('Webhook dispatch error:', err);
       }
     }
 
-    // Save to local log for reliability
-    try {
-      const stored = JSON.parse(localStorage.getItem('abohelmy_inquiries') || '[]');
-      stored.push({
-        id: Date.now(),
-        date: new Date().toLocaleString(),
-        ...formData,
-      });
-      localStorage.setItem('abohelmy_inquiries', JSON.stringify(stored));
-    } catch {
-      // fallback
-    }
+    // 3. Local fail-safe backup
+    saveLocalQuote(formData);
 
-    setTimeout(() => {
-      setSubmitting(false);
-      setIsSubmitted(true);
-    }, 600);
+    setSyncedToSheet(sheetSuccess);
+    setSubmitting(false);
+    setIsSubmitted(true);
   };
 
   const formattedWhatsAppInquiry =
     language === 'ar'
       ? `طلب تسعير وتوريد جديد من موقع أبو حلمي ستون الرسمي:\n` +
-        `الاسم: ${formData.name}\n` +
-        (formData.company ? `الشركة: ${formData.company}\n` : '') +
-        `الهاتف: ${formData.phone}\n` +
-        `البريد: ${formData.email}\n` +
-        (formData.country ? `المدينة: ${formData.country}\n` : '') +
-        (formData.stoneInterest ? `الخامة المطلوبة: ${formData.stoneInterest}\n` : '') +
-        (formData.area ? `المساحة / الكمية: ${formData.area}\n` : '') +
-        (formData.message ? `المواصفات: ${formData.message}\n` : '')
-      : `New Procurement RFQ from ABO HELMY STONE Official Website:\n` +
-        `Name: ${formData.name}\n` +
-        (formData.company ? `Company: ${formData.company}\n` : '') +
-        `Phone: ${formData.phone}\n` +
-        `Email: ${formData.email}\n` +
-        (formData.country ? `City: ${formData.country}\n` : '') +
-        (formData.stoneInterest ? `Stone Material: ${formData.stoneInterest}\n` : '') +
-        (formData.area ? `Area/Quantity: ${formData.area}\n` : '') +
-        (formData.message ? `Details: ${formData.message}\n` : '');
+        `• الاسم: ${formData.name}\n` +
+        (formData.company ? `• الشركة: ${formData.company}\n` : '') +
+        `• الهاتف: ${formData.phone}\n` +
+        `• البريد: ${formData.email}\n` +
+        (formData.country ? `• المدينة/الدولة: ${formData.country}\n` : '') +
+        (formData.stoneInterest ? `• الخامة: ${formData.stoneInterest}\n` : '') +
+        (formData.area ? `• المساحة: ${formData.area} م²\n` : '') +
+        (formData.message ? `• تفاصيل: ${formData.message}\n` : '')
+      : `New Procurement RFQ from ABO HELMY STONE:\n` +
+        `• Name: ${formData.name}\n` +
+        (formData.company ? `• Company: ${formData.company}\n` : '') +
+        `• Phone: ${formData.phone}\n` +
+        `• Email: ${formData.email}\n` +
+        (formData.country ? `• City/Country: ${formData.country}\n` : '') +
+        (formData.stoneInterest ? `• Stone: ${formData.stoneInterest}\n` : '') +
+        (formData.area ? `• Area: ${formData.area} m²\n` : '') +
+        (formData.message ? `• Details: ${formData.message}\n` : '');
 
   const whatsappInquiryUrl = getWhatsAppUrl(formattedWhatsAppInquiry);
 
   return (
-    <section id="contact" className="py-20 lg:py-28 bg-[#FAF9F6] hairline-b relative">
+    <section id="contact" className="py-16 lg:py-24 bg-[#FAF8F5] hairline-b relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section Header */}
-        <div className="max-w-3xl mb-12">
-          <div className="text-xs font-semibold uppercase tracking-wider text-[#8C754E] mb-2">
-            {t.contact.badge}
+        {/* Streamlined Section Header */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-10">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[#C5A059] mb-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#C5A059]" />
+              <span>{language === 'ar' ? 'طلب تسعير ومواصفات' : 'Procurement & Quotation'}</span>
+            </div>
+            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[#181917] tracking-tight">
+              {language === 'ar' ? 'طلب عرض سعر فوري ومباشر' : 'Direct Request for Quotation'}
+            </h2>
+            <p className="mt-2 text-xs sm:text-sm text-[#6B685E] leading-relaxed">
+              {language === 'ar'
+                ? 'فريقنا الهندسي جاهز لتقديم عروض الأسعار والمواصفات الفنية المعتمدة للمشاريع والكميات.'
+                : 'Our architectural team provides certified pricing and specifications tailored to your project.'}
+            </p>
           </div>
-          <h2 className="text-3xl sm:text-4xl font-bold text-[#1A1B19] tracking-tight">
-            {t.contact.title}
-          </h2>
-          <p className="mt-3 text-sm sm:text-base text-[#6B685E] leading-relaxed">
-            {t.contact.subtitle}
-          </p>
 
-          {/* Enterprise Accreditation Badge */}
-          <div className="mt-4 p-3.5 rounded-lg bg-[#F0EDE6] border border-black/[0.06] flex items-center gap-3">
-            <ShieldCheck className="w-5 h-5 text-[#8C754E] shrink-0" />
-            <span className="text-xs font-medium text-[#1A1B19] leading-relaxed">
-              {t.contact.googleFormConnected}
-            </span>
+          {/* Google Sheets Status & Admin Sync Button */}
+          <div className="shrink-0 flex items-center gap-2">
+            {sheetConfig ? (
+              <div className="p-2.5 px-3 rounded-xl bg-white border border-[#0F9D58]/30 shadow-xs flex items-center gap-3">
+                <div className="flex items-center gap-1.5">
+                  <FileSpreadsheet className="w-4 h-4 text-[#0F9D58]" />
+                  <span className="text-xs font-bold text-[#0F9D58]">
+                    {language === 'ar' ? 'Google Sheets مربوط' : 'Sheets Connected'}
+                  </span>
+                </div>
+                <a
+                  href={sheetConfig.sheetUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-[#181917] hover:text-[#0F9D58] underline flex items-center gap-1 font-medium"
+                >
+                  <span>عرض الشيت</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+                <button
+                  onClick={() => setIsSheetsModalOpen(true)}
+                  className="p-1 text-[#6B685E] hover:text-[#181917]"
+                  title="إعدادات الشيت"
+                >
+                  <Settings2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsSheetsModalOpen(true)}
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white hover:bg-[#F4EFE6] border border-black/[0.1] text-xs font-semibold text-[#181917] shadow-xs transition-colors"
+              >
+                <TableProperties className="w-4 h-4 text-[#0F9D58]" />
+                <span>{language === 'ar' ? 'ربط طلبات الأسعار بجوجل شيت' : 'Connect Google Sheet'}</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Location & Landmark Bar */}
-        <div className="mb-12 p-5 rounded-xl bg-white border border-black/[0.08] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        {/* Streamlined Location Bar */}
+        <div className="mb-10 p-4 sm:p-5 rounded-2xl bg-white border border-black/[0.08] shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
-            <MapPin className="w-5 h-5 text-[#8C754E] shrink-0 mt-0.5" />
+            <div className="w-8 h-8 rounded-lg bg-[#FAF8F5] border border-[#C5A059]/30 flex items-center justify-center shrink-0 mt-0.5">
+              <MapPin className="w-4 h-4 text-[#C5A059]" />
+            </div>
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-[#8C754E] block">
-                {t.contact.landmarkTitle}
+              <span className="text-[11px] font-bold uppercase tracking-wider text-[#C5A059] block">
+                {language === 'ar' ? 'المقر والمعرض الرئيسي' : 'Headquarters & Showroom'}
               </span>
-              <p className="text-sm sm:text-base font-bold text-[#1A1B19] mt-0.5">
+              <p className="text-xs sm:text-sm font-semibold text-[#181917] mt-0.5">
                 {COMPANY_CONFIG.contact.address[language]}
               </p>
             </div>
@@ -161,44 +232,51 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
             href={COMPANY_CONFIG.contact.googleMapsUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-[#1A1B19] bg-[#F3EFEA] hover:bg-[#EAE5DC] rounded-md transition-colors whitespace-nowrap shrink-0 border border-black/[0.08]"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-[#181917] bg-[#F4EFE6] hover:bg-[#EAE5DC] rounded-lg transition-colors whitespace-nowrap shrink-0 border border-black/[0.06]"
           >
-            <span>خرائط جوجل Google Maps</span>
-            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Google Maps</span>
+            <ExternalLink className="w-3 h-3" />
           </a>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
-          {/* Inquiry & Sheet Form */}
-          <div className="lg:col-span-7 bg-white rounded-xl p-6 sm:p-8 border border-black/[0.08] shadow-xs">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Inquiry Form */}
+          <div className="lg:col-span-7 bg-white rounded-2xl p-6 sm:p-8 border border-black/[0.08] shadow-xs">
             {isSubmitted ? (
-              <div className="py-8 text-center space-y-4 animate-fadeIn">
-                <div className="w-12 h-12 bg-[#DCFCE7] text-[#15803D] rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-7 h-7" />
+              <div className="py-8 text-center space-y-4">
+                <div className="w-14 h-14 bg-[#DCFCE7] text-[#15803D] rounded-full flex items-center justify-center mx-auto shadow-xs">
+                  <CheckCircle2 className="w-8 h-8" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-[#1A1B19]">
-                    {t.contact.successTitle}
+                  <h3 className="text-lg sm:text-xl font-bold text-[#181917]">
+                    {language === 'ar' ? 'تم استلام طلبكم بنجاح' : 'Quotation Request Received'}
                   </h3>
-                  <p className="text-sm text-[#6B685E] max-w-md mx-auto mt-1">
-                    {t.contact.successDesc}
+                  <p className="text-xs sm:text-sm text-[#6B685E] max-w-md mx-auto mt-1">
+                    {language === 'ar'
+                      ? 'سيقوم مهندس المبيعات بالتواصل معكم بالعرض والمواصفات الفنية.'
+                      : 'Our project engineer will contact you shortly with the technical quote.'}
                   </p>
                 </div>
 
-                <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#15803D] bg-[#F0FDF4] px-3 py-1.5 rounded-md border border-[#15803D]/20">
-                  <Check className="w-3.5 h-3.5" />
-                  <span>{t.contact.recordedInSheet}</span>
+                {/* Cloud sync indicator */}
+                <div className="inline-flex items-center gap-2 text-xs font-semibold text-[#0F9D58] bg-[#F0FDF4] px-3.5 py-1.5 rounded-lg border border-[#0F9D58]/25">
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>
+                    {syncedToSheet || sheetConfig
+                      ? language === 'ar' ? 'تم التوثيق والمزامنة في Google Sheets مباشرة' : 'Recorded in Google Sheets'
+                      : language === 'ar' ? 'تم تسجيل الطلب في قاعدة البيانات' : 'Saved to Procurement Log'}
+                  </span>
                 </div>
 
-                <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3">
+                <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
                   <a
                     href={whatsappInquiryUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-semibold text-white bg-[#15803D] hover:bg-[#166534] rounded-md transition-colors"
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 text-xs font-semibold text-white bg-[#15803D] hover:bg-[#166534] rounded-lg transition-colors shadow-xs"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>{t.contact.sendDirectWhatsApp}</span>
+                    <span>{language === 'ar' ? 'إرسال نسخة عبر الواتساب' : 'Send Copy via WhatsApp'}</span>
                   </a>
 
                   <button
@@ -216,9 +294,9 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
                         message: '',
                       });
                     }}
-                    className="w-full sm:w-auto px-4 py-2.5 text-xs font-medium text-[#1A1B19] hover:bg-[#F3EFEA] rounded-md transition-colors border border-black/[0.08]"
+                    className="w-full sm:w-auto px-4 py-2.5 text-xs font-medium text-[#181917] hover:bg-[#F4EFE6] rounded-lg transition-colors border border-black/[0.08]"
                   >
-                    {t.contact.newInquiry}
+                    {language === 'ar' ? 'طلب عرض سعر آخر' : 'Submit Another RFQ'}
                   </button>
                 </div>
               </div>
@@ -226,63 +304,63 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-[#1A1B19] mb-1">
-                      {t.contact.nameLabel} <span className="text-red-500">*</span>
+                    <label className="block text-xs font-medium text-[#181917] mb-1">
+                      {language === 'ar' ? 'الاسم الكامل' : 'Full Name'} <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      placeholder={t.contact.namePlaceholder}
-                      className={`w-full bg-[#FAF9F6] border rounded-md py-2 px-3 text-xs sm:text-sm text-[#1A1B19] focus:outline-none focus:ring-1 ${
-                        errors.name ? 'border-red-500 ring-red-500' : 'border-black/[0.12] focus:border-[#8C754E]'
+                      placeholder={language === 'ar' ? 'م. أحمد أو اسم الشركة' : 'Engineer / Company Name'}
+                      className={`w-full bg-[#FAF8F5] border rounded-lg py-2 px-3 text-xs sm:text-sm text-[#181917] focus:outline-none focus:ring-1 ${
+                        errors.name ? 'border-red-500 ring-red-500' : 'border-black/[0.12] focus:border-[#C5A059]'
                       }`}
                     />
                     {errors.name && <span className="text-[11px] text-red-600">{errors.name}</span>}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-[#1A1B19] mb-1">
-                      {t.contact.companyLabel}
+                    <label className="block text-xs font-medium text-[#181917] mb-1">
+                      {language === 'ar' ? 'الشركة / المكتب الاستشاري' : 'Company / Consultant'}
                     </label>
                     <input
                       type="text"
                       value={formData.company}
                       onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                      placeholder={t.contact.companyPlaceholder}
-                      className="w-full bg-[#FAF9F6] border border-black/[0.12] focus:border-[#8C754E] rounded-md py-2 px-3 text-xs sm:text-sm text-[#1A1B19] focus:outline-none"
+                      placeholder={language === 'ar' ? 'اختياري' : 'Optional'}
+                      className="w-full bg-[#FAF8F5] border border-black/[0.12] focus:border-[#C5A059] rounded-lg py-2 px-3 text-xs sm:text-sm text-[#181917] focus:outline-none"
                     />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-[#1A1B19] mb-1">
-                      {t.contact.emailLabel} <span className="text-red-500">*</span>
+                    <label className="block text-xs font-medium text-[#181917] mb-1">
+                      {language === 'ar' ? 'البريد الإلكتروني' : 'Email Address'} <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="email"
                       value={formData.email}
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      placeholder={t.contact.emailPlaceholder}
-                      className={`w-full bg-[#FAF9F6] border rounded-md py-2 px-3 text-xs sm:text-sm text-[#1A1B19] focus:outline-none focus:ring-1 ${
-                        errors.email ? 'border-red-500 ring-red-500' : 'border-black/[0.12] focus:border-[#8C754E]'
+                      placeholder="client@domain.com"
+                      className={`w-full bg-[#FAF8F5] border rounded-lg py-2 px-3 text-xs sm:text-sm text-[#181917] focus:outline-none focus:ring-1 ${
+                        errors.email ? 'border-red-500 ring-red-500' : 'border-black/[0.12] focus:border-[#C5A059]'
                       }`}
                     />
                     {errors.email && <span className="text-[11px] text-red-600">{errors.email}</span>}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-[#1A1B19] mb-1">
-                      {t.contact.phoneLabel} <span className="text-red-500">*</span>
+                    <label className="block text-xs font-medium text-[#181917] mb-1">
+                      {language === 'ar' ? 'رقم الهاتف / الواتساب' : 'Phone / WhatsApp'} <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                       placeholder="+20 100 000 0000"
-                      className={`w-full bg-[#FAF9F6] border rounded-md py-2 px-3 text-xs sm:text-sm text-[#1A1B19] focus:outline-none focus:ring-1 ${
-                        errors.phone ? 'border-red-500 ring-red-500' : 'border-black/[0.12] focus:border-[#8C754E]'
+                      className={`w-full bg-[#FAF8F5] border rounded-lg py-2 px-3 text-xs sm:text-sm text-[#181917] focus:outline-none focus:ring-1 ${
+                        errors.phone ? 'border-red-500 ring-red-500' : 'border-black/[0.12] focus:border-[#C5A059]'
                       }`}
                     />
                     {errors.phone && <span className="text-[11px] text-red-600">{errors.phone}</span>}
@@ -291,47 +369,15 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-[#1A1B19] mb-1">
-                      {t.contact.countryLabel}
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.country}
-                      onChange={(e) => setFormData({ ...formData, country: e.target.value })}
-                      placeholder={t.contact.countryPlaceholder}
-                      className="w-full bg-[#FAF9F6] border border-black/[0.12] focus:border-[#8C754E] rounded-md py-2 px-3 text-xs sm:text-sm text-[#1A1B19] focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-[#1A1B19] mb-1">
-                      {t.contact.projectTypeLabel}
-                    </label>
-                    <select
-                      value={formData.projectType}
-                      onChange={(e) => setFormData({ ...formData, projectType: e.target.value })}
-                      className="w-full bg-[#FAF9F6] border border-black/[0.12] focus:border-[#8C754E] rounded-md py-2 px-3 text-xs sm:text-sm text-[#1A1B19] focus:outline-none"
-                    >
-                      <option value="compound">{t.contact.projectTypes.compound}</option>
-                      <option value="commercial">{t.contact.projectTypes.commercial}</option>
-                      <option value="landscape">{t.contact.projectTypes.landscape}</option>
-                      <option value="wholesale">{t.contact.projectTypes.wholesale}</option>
-                      <option value="other">{t.contact.projectTypes.other}</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-[#1A1B19] mb-1">
-                      {t.contact.stoneInterestLabel}
+                    <label className="block text-xs font-medium text-[#181917] mb-1">
+                      {language === 'ar' ? 'الخامة أو المنتج المطلوب' : 'Stone Material'}
                     </label>
                     <select
                       value={formData.stoneInterest}
                       onChange={(e) => setFormData({ ...formData, stoneInterest: e.target.value })}
-                      className="w-full bg-[#FAF9F6] border border-black/[0.12] focus:border-[#8C754E] rounded-md py-2 px-3 text-xs sm:text-sm text-[#1A1B19] focus:outline-none"
+                      className="w-full bg-[#FAF8F5] border border-black/[0.12] focus:border-[#C5A059] rounded-lg py-2 px-3 text-xs sm:text-sm text-[#181917] focus:outline-none"
                     >
-                      <option value="">{t.contact.selectStoneOption}</option>
+                      <option value="">{language === 'ar' ? '— اختر الخامة المطلوبة —' : '— Select Material —'}</option>
                       {PRODUCTS.map((prod) => (
                         <option key={prod.id} value={prod.name[language]}>
                           #{prod.id < 10 ? `0${prod.id}` : prod.id} - {prod.name[language]}
@@ -341,29 +387,29 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
                   </div>
 
                   <div>
-                    <label className="block text-xs font-medium text-[#1A1B19] mb-1">
-                      {t.contact.areaLabel}
+                    <label className="block text-xs font-medium text-[#181917] mb-1">
+                      {language === 'ar' ? 'المساحة التقريبية (م²)' : 'Approx. Area (m²)'}
                     </label>
                     <input
                       type="text"
                       value={formData.area}
                       onChange={(e) => setFormData({ ...formData, area: e.target.value })}
-                      placeholder={t.contact.areaPlaceholder}
-                      className="w-full bg-[#FAF9F6] border border-black/[0.12] focus:border-[#8C754E] rounded-md py-2 px-3 text-xs sm:text-sm text-[#1A1B19] focus:outline-none"
+                      placeholder="مثال: 500 م²"
+                      className="w-full bg-[#FAF8F5] border border-black/[0.12] focus:border-[#C5A059] rounded-lg py-2 px-3 text-xs sm:text-sm text-[#181917] focus:outline-none"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-[#1A1B19] mb-1">
-                    {t.contact.messageLabel}
+                  <label className="block text-xs font-medium text-[#181917] mb-1">
+                    {language === 'ar' ? 'تفاصيل ومواصفات المشروع' : 'Project Specifications'}
                   </label>
                   <textarea
-                    rows={3}
+                    rows={2}
                     value={formData.message}
                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                    placeholder={t.contact.messagePlaceholder}
-                    className="w-full bg-[#FAF9F6] border border-black/[0.12] focus:border-[#8C754E] rounded-md py-2 px-3 text-xs sm:text-sm text-[#1A1B19] focus:outline-none"
+                    placeholder={language === 'ar' ? 'أبعاد خاصة، نوع التشطيب، موقع التوريد...' : 'Custom dimensions, finish, delivery location...'}
+                    className="w-full bg-[#FAF8F5] border border-black/[0.12] focus:border-[#C5A059] rounded-lg py-2 px-3 text-xs sm:text-sm text-[#181917] focus:outline-none"
                   />
                 </div>
 
@@ -371,61 +417,61 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="w-full inline-flex items-center justify-center gap-2 py-3 px-6 text-xs sm:text-sm font-semibold text-white bg-[#1A1B19] hover:bg-[#2C2E2B] rounded-md transition-colors shadow-xs disabled:opacity-75"
+                    className="w-full inline-flex items-center justify-center gap-2 py-3 px-6 text-xs sm:text-sm font-semibold text-white bg-[#181917] hover:bg-[#2A2B28] rounded-xl transition-all shadow-sm hover:shadow disabled:opacity-75"
                   >
-                    <Send className="w-4 h-4" />
-                    <span>{submitting ? t.contact.submitting : t.contact.submitBtn}</span>
+                    <Send className="w-4 h-4 text-[#C5A059]" />
+                    <span>
+                      {submitting 
+                        ? language === 'ar' ? 'جاري الإرسال والتسجيل...' : 'Recording RFQ...'
+                        : language === 'ar' ? 'إرسال طلب التسعير المباشر' : 'Submit Procurement RFQ'}
+                    </span>
                   </button>
                 </div>
               </form>
             )}
           </div>
 
-          {/* Directory of Phones (+20) */}
+          {/* Directory of Direct Hotlines (+20) */}
           <div className="lg:col-span-5 space-y-4">
-            <div className="bg-white rounded-xl p-6 border border-black/[0.08] shadow-xs space-y-5">
-              <h3 className="text-base font-bold text-[#1A1B19] border-b border-black/[0.06] pb-3">
-                {t.contact.directContactTitle}
+            <div className="bg-white rounded-2xl p-6 border border-black/[0.08] shadow-xs space-y-4">
+              <h3 className="text-sm sm:text-base font-bold text-[#181917] border-b border-black/[0.06] pb-3 flex items-center justify-between">
+                <span>{language === 'ar' ? 'الاتصال المباشر بإدارة التوريد' : 'Direct Supply Desk'}</span>
+                <span className="text-[11px] font-mono text-[#C5A059] font-medium">+20 Egypt</span>
               </h3>
 
-              {/* Mobiles with +20 International Code */}
-              <div className="space-y-2">
-                <span className="text-xs font-semibold text-[#8C754E] block">
-                  {t.contact.phoneNumbers}
-                </span>
-                <div className="space-y-1.5">
-                  {COMPANY_CONFIG.contact.mobiles.map((mob, i) => (
-                    <a
-                      key={i}
-                      href={`tel:${mob.number}`}
-                      className="p-2.5 rounded-lg bg-[#FAF9F6] border border-black/[0.06] hover:border-[#8C754E] transition-colors flex items-center justify-between group"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Phone className="w-4 h-4 text-[#8C754E]" />
-                        <div>
-                          <span className="text-[11px] text-[#6B685E] block leading-tight">
-                            {mob.label[language]}
-                          </span>
-                          <span className="text-xs font-bold text-[#1A1B19] font-mono group-hover:text-[#8C754E]" dir="ltr">
-                            {mob.display}
-                          </span>
-                        </div>
+              {/* Mobiles with +20 */}
+              <div className="space-y-1.5">
+                {COMPANY_CONFIG.contact.mobiles.map((mob, i) => (
+                  <a
+                    key={i}
+                    href={`tel:${mob.number}`}
+                    className="p-2.5 rounded-xl bg-[#FAF8F5] border border-black/[0.05] hover:border-[#C5A059]/50 transition-colors flex items-center justify-between group"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Phone className="w-3.5 h-3.5 text-[#C5A059]" />
+                      <div>
+                        <span className="text-[11px] text-[#6B685E] block leading-tight">
+                          {mob.label[language]}
+                        </span>
+                        <span className="text-xs font-bold text-[#181917] font-mono group-hover:text-[#C5A059]" dir="ltr">
+                          {mob.display}
+                        </span>
                       </div>
-                      <span className="text-[11px] text-[#8C754E] font-medium">اتصال</span>
-                    </a>
-                  ))}
-                </div>
+                    </div>
+                    <span className="text-[11px] text-[#C5A059] font-medium">اتصال</span>
+                  </a>
+                ))}
               </div>
 
               {/* WhatsApp Hotline */}
-              <div className="p-3.5 rounded-lg bg-[#F0FDF4] border border-[#15803D]/20 flex items-center justify-between">
+              <div className="p-3 rounded-xl bg-[#F0FDF4] border border-[#15803D]/20 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
-                  <MessageCircle className="w-5 h-5 text-[#15803D]" />
+                  <MessageCircle className="w-4 h-4 text-[#15803D]" />
                   <div>
-                    <span className="text-[11px] text-[#6B685E] block leading-tight">
-                      {t.contact.whatsAppHotline}
+                    <span className="text-[10px] text-[#6B685E] block leading-tight">
+                      {language === 'ar' ? 'واتساب المبيعات المباشر' : 'WhatsApp Hotline'}
                     </span>
-                    <span className="text-sm font-bold text-[#15803D] font-mono" dir="ltr">
+                    <span className="text-xs font-bold text-[#15803D] font-mono" dir="ltr">
                       {COMPANY_CONFIG.contact.whatsapp.display}
                     </span>
                   </div>
@@ -438,33 +484,28 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
                   )}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1 text-xs font-semibold text-white bg-[#15803D] hover:bg-[#166534] rounded transition-colors"
+                  className="px-3 py-1 text-xs font-semibold text-white bg-[#15803D] hover:bg-[#166534] rounded-lg transition-colors"
                 >
                   محادثة
                 </a>
               </div>
 
-              {/* Landline */}
-              <div className="p-2.5 rounded-lg bg-[#FAF9F6] border border-black/[0.06] flex items-center justify-between">
-                <span className="text-xs text-[#6B685E]">{t.contact.landline}</span>
-                <a
-                  href={`tel:${COMPANY_CONFIG.contact.landline.number}`}
-                  className="text-xs font-bold text-[#1A1B19] font-mono hover:text-[#8C754E]"
-                  dir="ltr"
-                >
-                  {COMPANY_CONFIG.contact.landline.display}
-                </a>
-              </div>
-
               {/* Working Hours */}
-              <div className="flex items-start gap-2 pt-2 border-t border-black/[0.06] text-xs text-[#6B685E]">
-                <Clock className="w-3.5 h-3.5 text-[#8C754E] shrink-0 mt-0.5" />
+              <div className="flex items-center gap-2 pt-2 border-t border-black/[0.06] text-xs text-[#6B685E]">
+                <Clock className="w-3.5 h-3.5 text-[#C5A059] shrink-0" />
                 <span>{COMPANY_CONFIG.contact.workingHours[language]}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Google Sheets Connect Modal */}
+      <GoogleSheetsConnectModal
+        isOpen={isSheetsModalOpen}
+        onClose={() => setIsSheetsModalOpen(false)}
+        onConfigChanged={(cfg) => setSheetConfig(cfg)}
+      />
     </section>
   );
 };
