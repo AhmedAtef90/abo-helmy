@@ -100,7 +100,7 @@ function MainContent() {
           className="flex items-center gap-2 bg-[#1A1B19] hover:bg-[#2C2E2B] text-white p-3 sm:px-3.5 sm:py-2 rounded-full shadow-md transition-all text-xs"
         >
           <Phone className="w-4 h-4 text-[#C5BBAA]" />
-          <span className="hidden sm:inline font-mono font-medium" dir="ltr">
+          <span className="hidden sm:inline font-sans font-bold tabular-nums tracking-tight" dir="ltr">
             {COMPANY_CONFIG.contact.primaryMobile.display}
           </span>
         </a>

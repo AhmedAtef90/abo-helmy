@@ -379,7 +379,7 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
                         <span className="text-[11px] text-[#6B685E] block leading-tight">
                           {mob.label[language]}
                         </span>
-                        <span className="text-xs font-bold text-[#181917] font-mono group-hover:text-[#C5A059]" dir="ltr">
+                        <span className="text-xs font-bold text-[#181917] font-sans tabular-nums tracking-tight group-hover:text-[#C5A059]" dir="ltr">
                           {mob.display}
                         </span>
                       </div>
@@ -397,7 +397,7 @@ export const ContactSection: React.FC<ContactSectionProps> = ({ initialStoneInte
                     <span className="text-[10px] text-[#6B685E] block leading-tight">
                       {language === 'ar' ? 'واتساب المبيعات المباشر' : 'WhatsApp Hotline'}
                     </span>
-                    <span className="text-xs font-bold text-[#15803D] font-mono" dir="ltr">
+                    <span className="text-xs font-bold text-[#15803D] font-sans tabular-nums tracking-tight" dir="ltr">
                       {COMPANY_CONFIG.contact.whatsapp.display}
                     </span>
                   </div>

@@ -127,7 +127,7 @@ export const Footer: React.FC<FooterProps> = ({ onSelectProduct }) => {
                 <span className="text-[10px] uppercase font-semibold text-[#D5C6AC] block">
                   أرقام الموبايل (كود مصر +20):
                 </span>
-                <div className="flex flex-col gap-0.5 font-mono text-white text-xs">
+                <div className="flex flex-col gap-0.5 font-sans font-bold tabular-nums tracking-tight text-white text-xs">
                   {COMPANY_CONFIG.contact.mobiles.map((mob, i) => (
                     <a
                       key={i}
@@ -141,12 +141,12 @@ export const Footer: React.FC<FooterProps> = ({ onSelectProduct }) => {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1 font-mono">
+              <div className="flex items-center gap-2 pt-1 font-sans font-bold tabular-nums tracking-tight">
                 <Phone className="w-3.5 h-3.5 text-[#D5C6AC] shrink-0" />
                 <span dir="ltr">أرضي: {COMPANY_CONFIG.contact.landline.display}</span>
               </div>
 
-              <div className="flex items-center gap-2 font-mono">
+              <div className="flex items-center gap-2 font-sans font-bold tabular-nums tracking-tight">
                 <MessageCircle className="w-3.5 h-3.5 text-[#4ADE80] shrink-0" />
                 <span dir="ltr" className="text-[#86EFAC] font-semibold">واتساب: {COMPANY_CONFIG.contact.whatsapp.display}</span>
               </div>

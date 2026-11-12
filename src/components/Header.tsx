@@ -52,7 +52,7 @@ export const Header: React.FC<HeaderProps> = ({ onOpenQuoteModal }) => {
           <div className="flex items-center gap-4 text-xs">
             <a
               href={`tel:${COMPANY_CONFIG.contact.primaryMobile.number}`}
-              className="flex items-center gap-1.5 text-[#E5D7BE] hover:text-[#C5A059] font-mono transition-colors font-medium"
+              className="flex items-center gap-1.5 text-[#E5D7BE] hover:text-[#C5A059] font-sans font-bold tabular-nums tracking-tight transition-colors"
             >
               <Phone className="w-3.5 h-3.5 text-[#C5A059]" />
               <span dir="ltr">{COMPANY_CONFIG.contact.primaryMobile.display}</span>
